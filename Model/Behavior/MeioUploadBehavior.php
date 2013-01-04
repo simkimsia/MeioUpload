@@ -234,7 +234,7 @@ class MeioUploadBehavior extends ModelBehavior {
  * Setup the behavior. It stores a reference to the model, merges the default options with the options for each field, and setup the validation rules.
  *
  * @param object $model Reference to model
- * @param array $settings Settings (optional)
+ * @param array $config Settings (optional)
  * @return void
  * @access public
  */
@@ -310,7 +310,7 @@ class MeioUploadBehavior extends ModelBehavior {
 /**
  * Sets the validation rules for each field.
  *
- * @param object $model Reference to model
+ * @param Model $model Reference to model
  * @return boolean Always true
  * @access public
  */
@@ -324,10 +324,11 @@ class MeioUploadBehavior extends ModelBehavior {
 /**
  * Initializes the upload
  *
- * @param object $model Reference to model
+ * @param Model $model Reference to model
  * @return boolean Whether the upload completed
  * @access public
  */
+
 	public function beforeSave(Model $model)  {
 		return $this->upload($model, null);
 	}
@@ -354,10 +355,12 @@ class MeioUploadBehavior extends ModelBehavior {
 /**
  * After save (callback)
  *
- * @param object $model Reference to model
+ * @param Model $model Reference to model
+ * @param boolean $created True if model is newly created and False if model is updated
  * @return void
  * @access public
  */
+
 	public function afterSave(Model $model, $created) {
 		$this->_deleteFilesList($model);
 	}
@@ -365,7 +368,7 @@ class MeioUploadBehavior extends ModelBehavior {
 /**
  * After delete (callback)
  *
- * @param object $model Reference to model
+ * @param Model $model Reference to model
  * @return void
  * @access public
  */
@@ -405,10 +408,12 @@ class MeioUploadBehavior extends ModelBehavior {
 /**
  * Deletes all files associated with the record beforing delete it.
  *
- * @param object $model Reference to model
+ * @param Model $model Reference to model
+ * @param boolean $cascade Default true. Set to true if you want the delete to cascade
  * @return boolean Always true
  * @access public
  */
+
 	public function beforeDelete(Model $model, $cascade = true)  {
 		$model->read(null, $model->id);
 		if (isset($model->data)) {
@@ -862,6 +867,37 @@ class MeioUploadBehavior extends ModelBehavior {
 			return true;
 		}
 	}
+	
+/**
+ * Regenerate all the thumbnails, for all fields that have thumbSizes, for records in the table. (used, eg, when you want to add or change thumbnail sizes)
+ * This will overwrite existing thumbnails, when they exist, so a backup of thumbnails should be done before hand.
+ * This will not delete any redundant thumbnails - redundant thumbnails can be deleted manually.
+ * From your controller, call this method like: $this->MyModel->regenerateThumbnails();
+ *
+ * @param object $model Reference to model
+ * @access public
+ */
+	function regenerateThumbnails(Model $model) {
+		$allRows = $model->find('all');
+		
+		foreach($allRows as $data){
+
+			// Loop through each Model field passed in MeioUpload's options via the $actsAs variable of the Model
+			foreach($this->__fields[$model->alias] as $fieldName => $options){
+
+				// don't try to regenerate thumbnails if the field is empty
+				if(!empty($data[$model->alias][$fieldName])){
+					
+					// set 'name' key, because _createThumbnails methods expects it to exist (it exists when the file is uploaded - but here the file isn't uploaded, so we just fake it).
+					$data[$model->alias][$fieldName] = array('name' => $data[$model->alias][$fieldName]);
+					
+					$saveAs = $options['dir'] . DS . $data[$model->alias][$fieldName]['name'];
+					list(,$ext) = $this->_splitFilenameAndExt($data[$model->alias][$fieldName]['name']);
+					$this->_createThumbnails($model, $data, $fieldName, $saveAs, $ext, $options);
+				}
+			}
+		}
+	}
 
 /**
  * Create all the thumbnails
@@ -875,7 +911,6 @@ class MeioUploadBehavior extends ModelBehavior {
  * @access protected
  */
 	function _createThumbnails(&$model, $data, $fieldName, $saveAs, $ext, $options) {
-		$saveAs = WWW_ROOT . $saveAs;
 		foreach ($options['thumbsizes'] as $key => $value) {
 			// Generate the name for the thumbnail
 			if (isset($options['uploadName']) && !empty($options['uploadName'])) {
@@ -959,7 +994,7 @@ class MeioUploadBehavior extends ModelBehavior {
 		$phpThumb->q = $params['thumbnailQuality'];
 
 		$imageArray = explode(".", $source);
-		$phpThumb->config_output_format = $imageArray[1];
+		$phpThumb->config_output_format = end($imageArray);
 		unset($imageArray);
 
 		$phpThumb->config_prefer_imagemagick = $this->__fields[$model->alias][$fieldName]['useImageMagick'];
